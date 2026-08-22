@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>EtheRus</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: "Microsoft YaHei", sans-serif;
+    color: #fff;
+  }
+  #wrap { position: relative; }
+  canvas { display: block; border-radius: 8px; box-shadow: 0 0 40px rgba(90, 90, 255, .25); }
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    background: rgba(10, 10, 24, .9);
+    border-radius: 8px;
+    text-align: center;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #startScreen { justify-content: flex-start; overflow-y: auto; padding: 26px 20px; }
+  .overlay h1 { font-size: 34px; margin-bottom: 10px; letter-spacing: 4px; }
+  .overlay p { color: #aab; margin: 3px 0; line-height: 1.7; }
+  .overlay button {
+    margin-top: 16px;
+    padding: 12px 42px;
+    font-size: 18px;
+    color: #fff;
+    background: linear-gradient(135deg, #5a5aff, #a05aff);
+    border: none; border-radius: 24px;
+    cursor: pointer;
+    transition: filter .15s, transform .15s;
+  }
+  .overlay button:hover { filter: brightness(1.15); transform: scale(1.04); }
+  .overlay button:active { transform: scale(0.97); }
+  .hidden { display: none !important; }
+  .key-hint { color: #8f8fff; font-weight: bold; }
+  #nameInput {
+    margin-top: 10px;
+    padding: 8px 14px;
+    border-radius: 16px;
+    border: 1px solid #445;
+    background: #1a1a30;
+    color: #fff;
+    text-align: center;
+    width: 200px;
+    outline: none;
+    font-size: 14px;
+  }
+  #nameInput:focus { border-color: #5a5aff; }
+  #diffRow { display: flex; gap: 10px; margin-top: 12px; }
+  .diffBtn {
+    padding: 7px 20px !important;
+    font-size: 14px !important;
+    margin-top: 0 !important;
+    background: transparent !important;
+    border: 1px solid #445 !important;
+    border-radius: 16px !important;
+    color: #99a !important;
+  }
+  .diffBtn.selected {
+    background: linear-gradient(135deg, #5a5aff, #a05aff) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+  }
+  .section-label { font-size: 13px; color: #778; margin-top: 14px; }
+  #songList {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    width: 360px;
+  }
+  .songBtn {
+    padding: 8px 6px !important;
+    font-size: 13px !important;
+    margin-top: 0 !important;
+    background: transparent !important;
+    border: 1px solid #445 !important;
+    border-radius: 10px !important;
+    color: #99a !important;
+    line-height: 1.4;
+  }
+  .songBtn small { display: block; font-size: 11px; opacity: .7; }
+  .songBtn.selected {
+    background: linear-gradient(135deg, #5a5aff, #a05aff) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+  }
+  #pickBtn {
+    padding: 8px 24px;
+    font-size: 14px;
+    background: transparent;
+    border: 1px solid #5a5aff;
+    border-radius: 18px;
+    margin-top: 12px;
+  }
+  #fileStatus { font-size: 13px; color: #889; max-width: 360px; word-break: break-all; }
+  #startBtn { margin-bottom: 8px; }
+  #adminRow { margin-top: 4px; padding-bottom: 10px; font-size: 12px; color: #556; }
+  #adminRow a { color: #556; cursor: pointer; text-decoration: underline; }
+  #adminRow a:hover { color: #88a; }
+  #autoRow { margin-top: 8px; font-size: 13px; color: #ffb84d; display: flex; gap: 6px; align-items: center; }
+  #congrats {
+    font-size: 19px;
+    color: #ffd75a;
+    font-weight: bold;
+    max-width: 380px;
+    line-height: 1.6;
+    margin-bottom: 6px;
+  }
+  .lbTitle { font-size: 13px; color: #778; margin-top: 6px; }
+  #rankList {
+    width: 300px;
+    margin: 6px 0 4px;
+    font-size: 14px;
+  }
+  .rankRow {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 14px;
+    border-radius: 8px;
+    color: #bbc;
+  }
+  .rankRow .rname { display: flex; gap: 10px; }
+  .rankRow.me {
+    background: rgba(90, 90, 255, .25);
+    color: #fff;
+    font-weight: bold;
+    outline: 1px solid #5a5aff;
+  }
+  .rankRow.top1 .rno { color: #ffd75a; }
+  .rankRow.top2 .rno { color: #cdd5e0; }
+  .rankRow.top3 .rno { color: #e0a06a; }
+  #resultStats { margin-top: 8px; font-size: 14px; color: #99a; line-height: 1.9; }
+  #resultStats b { color: #ffd75a; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="440" height="700"></canvas>
+
+  <div class="overlay" id="startScreen">
+    <h1>EtheRus</h1>
+    <p>音符落到判定线时按对应按键</p>
+    <p><span class="key-hint">D</span>　<span class="key-hint">F</span>　<span class="key-hint">J</span>　<span class="key-hint">K</span></p>
+    <input id="nameInput" maxlength="12" placeholder="输入你的昵称">
+    <div id="diffRow">
+      <button class="diffBtn" data-d="easy">简单</button>
+      <button class="diffBtn selected" data-d="normal">普通</button>
+      <button class="diffBtn" data-d="hard">困难</button>
+    </div>
+    <p class="section-label">选择关卡</p>
+    <div id="songList"></div>
+    <button id="pickBtn">导入自定义音乐</button>
+    <input type="file" id="fileInput" accept="audio/*" class="hidden">
+    <p id="fileStatus"></p>
+    <div id="autoRow" class="hidden">
+      <input type="checkbox" id="autoTest">
+      <label for="autoTest">测试模式（自动判定，成绩不入榜）</label>
+    </div>
+    <button id="startBtn">开始游戏</button>
+    <div id="adminRow"><a id="adminLink">管理员入口</a></div>
+  </div>
+
+  <div class="overlay hidden" id="pauseScreen">
+    <h1>已暂停</h1>
+    <button id="resumeBtn">继续</button>
+    <button id="quitBtn" style="background:transparent;border:1px solid #556;">退出到主菜单</button>
+  </div>
+
+  <div class="overlay hidden" id="resultScreen">
+    <h1>演奏结束</h1>
+    <p id="congrats"></p>
+    <p class="lbTitle" id="lbTitle">本地排行榜</p>
+    <div id="rankList"></div>
+    <div id="resultStats"></div>
+    <button id="retryBtn">再来一次</button>
+    <button id="menuBtn" style="background:transparent;border:1px solid #556;">返回主菜单</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- 难度配置（所有可调参数集中在这里）----------
+const DIFFS = {
+  easy:   { name: "简单", speed: 340, winPerfect: 0.08,  winGood: 0.14,  winMiss: 0.20,  minGap: 0.20, noteCap: 400,  scoreMul: 1 },
+  normal: { name: "普通", speed: 420, winPerfect: 0.06,  winGood: 0.11,  winMiss: 0.15,  minGap: 0.13, noteCap: 700,  scoreMul: 2 },
+  hard:   { name: "困难", speed: 500, winPerfect: 0.045, winGood: 0.085, winMiss: 0.12,  minGap: 0.09, noteCap: 1000, scoreMul: 3 },
+};
+let diffKey = "normal";
+function cfg() { return DIFFS[diffKey]; }
+
+// ---------- 阶段提示配置 ----------
+const PHASE_MSGS = [
+  { text: "开始咯!加油", color: "#5ac8fa" },
+  { text: "继续！", color: "#a05aff" },
+  { text: "最后冲刺！", color: "#ff7ab8" },
+];
+
+// ---------- 结算恭喜语配置（按分段）----------
+function getCongrats(acc, fullCombo) {
+  if (fullCombo)      return "天呐,全部完美！EtheRus认可你了！";
+  if (acc >= 95)      return "简直神了！";
+  if (acc >= 80)      return "不错不错！";
+  if (acc >= 60)      return "还差一点点哦，加油！";
+  return "不要气馁，再接再厉！";
+}
+
+// ---------- 内置歌曲定义（旋律由种子确定性生成，和声按调性进行）----------
+// 和弦性质：min = 小三和弦，maj = 大三和弦；prog 中的 deg 为调内半音级数（主音=0）
+const QUALITY = { maj: [0, 4, 7], min: [0, 3, 7] };
+// 相对和弦根音的协和音程（避免半音、三全音、大七度冲突）
+const CONSONANT = new Set([0, 2, 3, 4, 5, 7, 8, 9, 10]);
+const SONGS = [
+  // A 小调：i - VI - III - VII，抒情流行
+  { id: "starlight", name: "星光旅程", bpm: 120, seed: 11, density: 0.55, root: 0,  scale: [0, 3, 5, 7, 10], drumStyle: 0,
+    prog: [{ deg: 0, q: "min" }, { deg: 8, q: "maj" }, { deg: 3, q: "maj" }, { deg: 10, q: "maj" }] },
+  // B 大调：I - V - vi - IV，明亮电子
+  { id: "neon",      name: "霓虹脉冲", bpm: 128, seed: 27, density: 0.65, root: 2,  scale: [0, 2, 4, 7, 9], drumStyle: 1,
+    prog: [{ deg: 0, q: "maj" }, { deg: 7, q: "maj" }, { deg: 9, q: "min" }, { deg: 5, q: "maj" }] },
+  // G 小调：i - iv - VI - v，雨夜慢板
+  { id: "rain",      name: "雨夜钢琴", bpm: 100, seed: 42, density: 0.45, root: -3, scale: [0, 3, 5, 7, 10], drumStyle: 2,
+    prog: [{ deg: 0, q: "min" }, { deg: 5, q: "min" }, { deg: 8, q: "maj" }, { deg: 7, q: "min" }] },
+  // C 小调：i - VII - VI - v，高速摇滚
+  { id: "blaze",     name: "烈焰疾走", bpm: 140, seed: 63, density: 0.75, root: 4,  scale: [0, 3, 5, 7, 10], drumStyle: 1,
+    prog: [{ deg: 0, q: "min" }, { deg: 10, q: "maj" }, { deg: 8, q: "maj" }, { deg: 7, q: "min" }] },
+];
+const SONG_SECONDS = 90;
+let selectedSongId = SONGS[0].id; // 或 "custom"
+
+// ---------- 用户 / 管理员 ----------
+const ADMIN_PASSWORD = "ZSLghj78877887";
+let playerName = "玩家";
+let adminUnlocked = false;
+let autoPlay = false;
+
+// ---------- 虚拟对手（局内实时排名）----------
+const BOTS = [
+  { name: "Nova",  skill: 0.97 },
+  { name: "Luna",  skill: 0.88 },
+  { name: "Kaito", skill: 0.76 },
+  { name: "Mocha", skill: 0.62 },
+  { name: "Echo",  skill: 0.48 },
+];
+let botScores = BOTS.map(() => 0);
+
+// ---------- 基础配置 ----------
+const canvas = document.getElementById("game");
+const g = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+const LANES = 4;
+const LANE_W = W / LANES;
+const JUDGE_Y = 580;
+const KEYS = ["d", "f", "j", "k"];
+const LANE_COLORS = ["#5ac8fa", "#7af0a0", "#ffd75a", "#ff7ab8"];
+const LEAD_IN = 2.0;             // 开始前留白（秒）
+
+// ---------- 游戏状态 ----------
+let audioCtx = null;
+let songStart = 0;
+let notes = [];          // {time, lane, state: "pending"|"hit"|"miss"}
+let state = "ready";     // ready | playing | paused | result
+let score = 0, displayScore = 0, combo = 0, maxCombo = 0;
+let cntPerfect = 0, cntGood = 0, cntMiss = 0;
+let laneFlash = [0, 0, 0, 0];
+let judgeGlow = [0, 0, 0, 0];
+let keyDown = [false, false, false, false];
+let popups = [];
+let particles = [];      // {x, y, vx, vy, born, life, color}
+let ripples = [];        // {x, y, born, maxR, color}
+let comboPopAt = -1;
+let lastSfxAt = -1;      // 音效节流
+let totalNotes = 0;
+let customBuffer = null;
+let customAnalysis = null;
+let currentPhase = 0;
+let phaseBanner = null;
+let flashAt = -10;
+let flashColor = "#ffffff";
+let currentSongGen = null; // 当前内置歌曲的生成结果
+
+function semiToFreq(semi) { return 440 * Math.pow(2, semi / 12); }
+function semiToLane(semi) { return ((semi % 4) + 4) % 4; }
+
+function songProgress(now) {
+  if (!notes.length) return 0;
+  const t0 = notes[0].time, t1 = notes[notes.length - 1].time;
+  if (t1 <= t0) return 0;
+  return Math.min(1, Math.max(0, (now - t0) / (t1 - t0)));
+}
+
+// ---------- 随机数（种子确定性）----------
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// ---------- 内置歌曲生成（主音/和弦/贝斯/鼓组，约90秒）----------
+function scalePitch(def, deg) {
+  // 音阶级数 → 半音（高八度演奏）
+  const len = def.scale.length;
+  return def.root + 12 + def.scale[deg % len] + 12 * Math.floor(deg / len);
+}
+
+function generateSong(def) {
+  const rnd = mulberry32(def.seed);
+  const stepDur = 60 / def.bpm / 2;                    // 八分音符时长
+  const bars = Math.round(SONG_SECONDS * def.bpm / 240); // 4拍一小节
+  const steps = bars * 8;
+
+  // 和弦进行：每2小节一个和弦，大小三和弦按调性级数
+  const chords = [];
+  for (let c = 0; c < Math.ceil(bars / 2); c++) {
+    const p = def.prog[c % def.prog.length];
+    chords.push({ step: c * 16, root: def.root + p.deg, q: p.q });
+  }
+  const barChords = new Array(bars);
+  for (let b = 0; b < bars; b++) {
+    barChords[b] = chords[Math.min(chords.length - 1, Math.floor(b / 2))];
+  }
+
+  // 主音旋律：音阶内随机游走 + 乐句留白 + 不协和音规避
+  const melody = [];
+  let deg = Math.floor(def.scale.length / 2);
+  const degMax = def.scale.length + 3;
+  let rest = 0;
+  for (let s = 0; s < steps; s++) {
+    const inBar = s % 8;
+    if (rest > 0) { rest--; continue; }
+    if (inBar === 6 && rnd() < 0.4) { rest = 1 + Math.floor(rnd() * 2); continue; }
+    if (inBar === 0 || rnd() < def.density) {
+      deg += Math.floor(rnd() * 5) - 2;
+      deg = Math.max(0, Math.min(degMax, deg));
+      let semi = scalePitch(def, deg);
+      const chordRoot = barChords[Math.floor(s / 8)].root;
+      // 与当前和弦构成半音/三全音/大七度时移动一度重试，仍冲突则休止
+      let ok = CONSONANT.has(((semi - chordRoot) % 12 + 12) % 12);
+      for (let tries = 0; !ok && tries < 3; tries++) {
+        deg += rnd() < 0.5 ? 1 : -1;
+        deg = Math.max(0, Math.min(degMax, deg));
+        semi = scalePitch(def, deg);
+        ok = CONSONANT.has(((semi - chordRoot) % 12 + 12) % 12);
+      }
+      if (ok) melody.push({ step: s, semi });
+    }
+  }
+  return { def, stepDur, bars, steps, chords, barChords, melody };
+}
+
+function scheduleSong(sg, t0) {
+  const { def, stepDur, bars, chords, barChords, melody } = sg;
+
+  // 主音（方波）
+  for (const m of melody) {
+    playTone(t0 + m.step * stepDur, semiToFreq(m.semi), "square", stepDur * 0.9, 0.13);
+  }
+  // 钢琴和弦：琶音 + 第2小节铺底（按和弦性质取音）
+  for (const ch of chords) {
+    const tones = [...QUALITY[ch.q], 12];
+    tones.forEach((iv, k) => {
+      playTone(t0 + (ch.step + k * 0.5) * stepDur, semiToFreq(ch.root + iv), "triangle", stepDur * 3, 0.09);
+    });
+    tones.forEach(iv => {
+      playTone(t0 + (ch.step + 8) * stepDur, semiToFreq(ch.root + iv - 12), "triangle", stepDur * 7, 0.06);
+    });
+  }
+  // 贝斯：每拍根音，第4拍后半加五音经过（五音是和弦内音，始终协和）
+  for (let b = 0; b < bars; b++) {
+    const root = barChords[b].root;
+    for (let beat = 0; beat < 4; beat++) {
+      const t = t0 + (b * 8 + beat * 2) * stepDur;
+      playTone(t, semiToFreq(root - 12), "sawtooth", stepDur * 1.6, 0.15);
+      if (beat === 3) {
+        playTone(t + stepDur, semiToFreq(root - 5), "sawtooth", stepDur * 0.9, 0.1);
+      }
+    }
+  }
+  // 鼓组
+  for (let b = 0; b < bars; b++) {
+    for (let beat = 0; beat < 4; beat++) {
+      const t = t0 + (b * 8 + beat * 2) * stepDur;
+      if (def.drumStyle === 1) playKick(t);                       // 四踩
+      else if (beat === 0 || beat === 2) playKick(t);             // 1、3拍
+      if (def.drumStyle === 2) {
+        if (beat === 2) playSnare(t);
+        playHat(t, 0.06);                                          // 稀疏踩镲
+      } else {
+        if (beat === 1 || beat === 3) playSnare(t);
+        playHat(t + stepDur, 0.1);                                 // 反拍踩镲
+        if (def.drumStyle === 1 && b % 4 === 3) playHat(t + stepDur * 0.5, 0.05); // 每4小节加花
+      }
+    }
+  }
+}
+
+// ---------- 音频合成原语 ----------
+function playTone(t, freq, type, dur, vol) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+}
+
+function playKick(t) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.2);
+}
+
+function playSnare(t) {
+  playNoise(t, 1800, 0.12, 0.22, "bandpass", 1.0);
+  playTone(t, 200, "triangle", 0.08, 0.08);
+}
+
+let noiseBuf = null;
+function ensureNoise() {
+  if (!noiseBuf) {
+    noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuf;
+}
+
+function playNoise(t, freq, dur, vol, type = "bandpass", q = 1.2) {
+  const src = audioCtx.createBufferSource();
+  src.buffer = ensureNoise();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = type;
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(filter).connect(gain).connect(audioCtx.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+function playHat(t, vol = 0.12) {
+  playNoise(t, 7000, 0.05, vol, "highpass", 0.7);
+}
+
+// ---------- 打击音效 ----------
+function sfxPerfect() {
+  const t = audioCtx.currentTime;
+  playTone(t, 1568, "sine", 0.09, 0.22);
+  playTone(t, 784, "sine", 0.07, 0.12);
+  playNoise(t, 5000, 0.04, 0.15, "highpass", 0.7);
+}
+
+function sfxGood() {
+  const t = audioCtx.currentTime;
+  playTone(t, 1046, "sine", 0.07, 0.16);
+  playNoise(t, 3000, 0.04, 0.1, "bandpass", 1.5);
+}
+
+function sfxMiss() {
+  const t = audioCtx.currentTime;
+  playTone(t, 110, "sawtooth", 0.18, 0.1);
+  playNoise(t, 300, 0.1, 0.08, "lowpass", 0.7);
+}
+
+function sfxPhase() {
+  const t = audioCtx.currentTime;
+  playTone(t, 880, "sine", 0.3, 0.15);
+  playTone(t + 0.1, 1174, "sine", 0.3, 0.15);
+  playTone(t + 0.2, 1568, "sine", 0.4, 0.18);
+}
+
+// ---------- FFT（基2迭代算法）----------
+function fftMag(frame) {
+  const n = frame.length;
+  const re = Float64Array.from(frame);
+  const im = new Float64Array(n);
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { const t = re[i]; re[i] = re[j]; re[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cwr = 1, cwi = 0;
+      const half = len >> 1;
+      for (let k = 0; k < half; k++) {
+        const ur = re[i + k], ui = im[i + k];
+        const vr = re[i + k + half] * cwr - im[i + k + half] * cwi;
+        const vi = re[i + k + half] * cwi + im[i + k + half] * cwr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi;
+        re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
+        const nwr = cwr * wr - cwi * wi;
+        cwi = cwr * wi + cwi * wr;
+        cwr = nwr;
+      }
+    }
+  }
+  const mags = new Float64Array(n / 2);
+  for (let i = 0; i < n / 2; i++) mags[i] = Math.hypot(re[i], im[i]);
+  return mags;
+}
+
+// ---------- 自定义音频分析（只做一次，结果缓存）----------
+const FFT_SIZE = 1024, HOP = 512;
+
+function analyzeBuffer(buffer) {
+  let sr = buffer.sampleRate;
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  let mono = new Float32Array(ch0.length);
+  for (let i = 0; i < ch0.length; i++) {
+    mono[i] = ch1 ? (ch0[i] + ch1[i]) / 2 : ch0[i];
+  }
+  if (sr >= 40000) {
+    const half = new Float32Array(mono.length >> 1);
+    for (let i = 0; i < half.length; i++) half[i] = mono[i * 2];
+    mono = half;
+    sr /= 2;
+  }
+  const win = new Float32Array(FFT_SIZE);
+  for (let i = 0; i < FFT_SIZE; i++) {
+    win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
+  }
+  const frameCount = Math.floor((mono.length - FFT_SIZE) / HOP);
+  const flux = new Float64Array(frameCount);
+  const bandPeak = new Uint8Array(frameCount);
+  const binHz = sr / FFT_SIZE;
+  const frame = new Float32Array(FFT_SIZE);
+  let prev = null;
+  for (let f = 0; f < frameCount; f++) {
+    const off = f * HOP;
+    for (let i = 0; i < FFT_SIZE; i++) frame[i] = mono[off + i] * win[i];
+    const mag = fftMag(frame);
+    if (prev) {
+      let fl = 0;
+      for (let i = 0; i < mag.length; i++) {
+        const d = Math.log(1 + mag[i]) - Math.log(1 + prev[i]);
+        if (d > 0) fl += d;
+      }
+      flux[f] = fl;
+    }
+    const be = [0, 0, 0, 0];
+    for (let i = 1; i < mag.length; i++) {
+      const hz = i * binHz;
+      const b = hz < 200 ? 0 : hz < 800 ? 1 : hz < 2400 ? 2 : 3;
+      be[b] += mag[i];
+    }
+    let best = 0;
+    for (let b = 1; b < 4; b++) if (be[b] > be[best]) best = b;
+    bandPeak[f] = best;
+    prev = mag;
+  }
+  return { flux, bandPeak, sr };
+}
+
+function buildOnsets(analysis, mult, minGap) {
+  const { flux, bandPeak, sr } = analysis;
+  const onsets = [];
+  const LOCAL = 43;
+  for (let i = 2; i < flux.length - 1; i++) {
+    if (flux[i] <= 0) continue;
+    if (flux[i] < flux[i - 1] || flux[i] < flux[i + 1]) continue;
+    const lo = Math.max(0, i - LOCAL), hi = Math.min(flux.length, i + LOCAL);
+    let mean = 0;
+    for (let j = lo; j < hi; j++) mean += flux[j];
+    mean /= (hi - lo);
+    if (flux[i] < mean * mult + 1e-6) continue;
+    const t = i * HOP / sr;
+    if (t < 0.3) continue;
+    if (onsets.length && t - onsets[onsets.length - 1].t < minGap) {
+      if (flux[i] > onsets[onsets.length - 1].strength) {
+        onsets[onsets.length - 1] = { t, lane: bandPeak[i], strength: flux[i] };
+      }
+      continue;
+    }
+    onsets.push({ t, lane: bandPeak[i], strength: flux[i] });
+  }
+  return onsets;
+}
+
+function pickOnsetsForDifficulty(analysis) {
+  const cap = cfg().noteCap;
+  for (const mult of [1.5, 1.9, 2.4, 3.0, 3.5]) {
+    const onsets = buildOnsets(analysis, mult, cfg().minGap);
+    if (onsets.length <= cap) return onsets;
+  }
+  return buildOnsets(analysis, 4.0, cfg().minGap);
+}
+
+// ---------- 谱面构建 ----------
+function buildChart() {
+  if (selectedSongId === "custom" && customAnalysis) {
+    notes = pickOnsetsForDifficulty(customAnalysis).map(o => ({
+      time: songStart + LEAD_IN + o.t,
+      lane: o.lane,
+      state: "pending"
+    }));
+  } else {
+    const def = SONGS.find(s => s.id === selectedSongId) || SONGS[0];
+    currentSongGen = generateSong(def);
+    notes = currentSongGen.melody.map(m => ({
+      time: songStart + LEAD_IN + m.step * currentSongGen.stepDur,
+      lane: semiToLane(m.semi),
+      state: "pending"
+    }));
+  }
+  totalNotes = notes.length;
+}
+
+// ---------- 判定 ----------
+function judge(lane) {
+  if (state !== "playing") return;
+  const now = audioCtx.currentTime;
+  const c = cfg();
+  let best = null, bestDiff = Infinity;
+  for (const n of notes) {
+    if (n.lane !== lane || n.state !== "pending") continue;
+    const diff = Math.abs(n.time - now);
+    if (diff < bestDiff) { best = n; bestDiff = diff; }
+    if (n.time - now > c.winMiss) break;
+  }
+  if (!best || bestDiff > c.winMiss) return;
+
+  best.state = "hit";
+  laneFlash[lane] = 1;
+  spawnParticles(lane, bestDiff <= c.winGood);
+  const mul = c.scoreMul;
+  if (bestDiff <= c.winPerfect) {
+    score += 150 * mul; cntPerfect++;
+    judgeGlow[lane] = 1;
+    addPopup("PERFECT", "#ffd75a");
+    sfxPerfect();
+  } else if (bestDiff <= c.winGood) {
+    score += 50 * mul; cntGood++;
+    judgeGlow[lane] = 0.7;
+    addPopup("GOOD", "#7af0a0");
+    sfxGood();
+  } else {
+    score += 5 * mul; cntMiss++;
+    combo = 0;
+    addPopup("MISS", "#ff5a5a");
+    sfxMiss();
+    return;
+  }
+  combo++;
+  comboPopAt = now;
+  if (combo > maxCombo) maxCombo = combo;
+}
+
+function addPopup(text, color) {
+  popups.push({ text, color, time: audioCtx.currentTime });
+}
+
+function spawnParticles(lane, strong) {
+  const now = audioCtx.currentTime;
+  const cx = lane * LANE_W + LANE_W / 2;
+  const count = strong ? 14 : 8;
+  for (let i = 0; i < count; i++) {
+    const ang = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+    const sp = 120 + Math.random() * 260;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * 40,
+      y: JUDGE_Y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp,
+      born: now,
+      life: 0.4 + Math.random() * 0.3,
+      color: LANE_COLORS[lane]
+    });
+  }
+}
+
+function spawnConfetti(count) {
+  const now = audioCtx.currentTime;
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = 150 + Math.random() * 350;
+    particles.push({
+      x: W / 2,
+      y: H * 0.35,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp - 100,
+      born: now,
+      life: 0.7 + Math.random() * 0.5,
+      color: LANE_COLORS[i % LANES]
+    });
+  }
+}
+
+function spawnRipple(x, y, maxR, color) {
+  ripples.push({ x, y, born: audioCtx.currentTime, maxR, color });
+}
+
+// ---------- 阶段系统 ----------
+function triggerPhase(phase) {
+  const now = audioCtx.currentTime;
+  const msg = PHASE_MSGS[phase - 1];
+  phaseBanner = { text: msg.text, color: msg.color, time: now };
+  flashAt = now;
+  flashColor = msg.color;
+  sfxPhase();
+  if (phase === 1) {
+    spawnRipple(W / 2, H / 2, 380, msg.color);
+  } else if (phase === 2) {
+    spawnRipple(W / 2, H * 0.35, 300, msg.color);
+    spawnRipple(W / 2, H * 0.35, 420, "#ffffff");
+    spawnConfetti(40);
+  } else if (phase === 3) {
+    spawnRipple(W / 2, H / 2, 300, msg.color);
+    spawnConfetti(20);
+  }
+}
+
+function updatePhase(now) {
+  if (!notes.length) return;
+  const prog = songProgress(now);
+  let target = currentPhase;
+  if (currentPhase === 0 && now >= notes[0].time) target = 1;
+  else if (currentPhase === 1 && prog >= 1 / 3) target = 2;
+  else if (currentPhase === 2 && prog >= 2 / 3) target = 3;
+  if (target !== currentPhase) {
+    currentPhase = target;
+    triggerPhase(target);
+  }
+}
+
+// ---------- 虚拟对手实时涨分 ----------
+function updateBots(now) {
+  const prog = songProgress(now);
+  if (prog <= 0) return;
+  const maxScore = totalNotes * 150 * cfg().scoreMul;
+  BOTS.forEach((b, i) => {
+    const wobble = 1 + 0.03 * Math.sin(i * 2.1 + prog * 9);
+    const target = maxScore * b.skill * wobble * Math.pow(prog, 1.05);
+    if (target > botScores[i]) botScores[i] = target;
+  });
+}
+
+function playerRank() {
+  let r = 1;
+  for (const s of botScores) if (s > score) r++;
+  return r;
+}
+
+// ---------- 排行榜存储层 ----------
+// 配置 LEADERBOARD_API 即为在线排行榜（服务器接口协议见 README.md）；
+// 留空则使用本机 localStorage。在线提交失败时自动回退本机。
+const LEADERBOARD_API = ""; // 例："https://api.example.com"（不要带末尾斜杠）
+
+function lbKey() { return `etherus_lb_${selectedSongId}_${diffKey}`; }
+
+function loadLB() {
+  try { return JSON.parse(localStorage.getItem(lbKey())) || []; }
+  catch (e) { return []; }
+}
+
+function submitLocalScore(acc) {
+  const lb = loadLB();
+  const entry = { name: playerName, score, acc: +acc.toFixed(1), date: Date.now() };
+  lb.push(entry);
+  lb.sort((a, b) => b.score - a.score || b.acc - a.acc);
+  // 同名只保留最好成绩
+  const seen = new Set();
+  const deduped = lb.filter(e => {
+    if (seen.has(e.name)) return false;
+    seen.add(e.name);
+    return true;
+  }).slice(0, 10);
+  try { localStorage.setItem(lbKey(), JSON.stringify(deduped)); } catch (e) {}
+  return { list: deduped, meIndex: deduped.indexOf(deduped.find(e => e === entry || (e.name === entry.name && e.score === entry.score && e.date === entry.date))) };
+}
+
+async function submitOnlineScore(acc) {
+  const entry = { name: playerName, score, acc: +acc.toFixed(1), date: Date.now() };
+  const res = await fetch(
+    `${LEADERBOARD_API}/scores?song=${encodeURIComponent(selectedSongId)}&diff=${encodeURIComponent(diffKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry)
+    }
+  );
+  if (!res.ok) throw new Error("排行榜服务器返回 " + res.status);
+  const data = await res.json(); // 期望格式：{ top: [...], meIndex: n }
+  return { list: data.top, meIndex: data.meIndex };
+}
+
+async function submitScore(acc) {
+  if (LEADERBOARD_API) {
+    try {
+      return { ...(await submitOnlineScore(acc)), online: true };
+    } catch (e) { /* 网络失败回退本机 */ }
+  }
+  return { ...submitLocalScore(acc), online: false };
+}
+
+// ---------- 渲染 ----------
+function draw() {
+  requestAnimationFrame(draw);
+  g.fillStyle = "#12122a";
+  g.fillRect(0, 0, W, H);
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  const playing = state === "playing" || state === "paused";
+
+  // 第三阶段：背景冲刺速度线
+  if (playing && currentPhase === 3) {
+    const cx = W / 2, cy = H / 2;
+    const maxR = Math.hypot(cx, cy);
+    g.save();
+    g.globalAlpha = 0.13;
+    g.strokeStyle = "#8fb8ff";
+    g.lineWidth = 2;
+    for (let i = 0; i < 36; i++) {
+      const ang = i * 2.39996;
+      const off = (now * 900 + i * 197) % maxR;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(ang) * off, cy + Math.sin(ang) * off);
+      g.lineTo(cx + Math.cos(ang) * (off + 90), cy + Math.sin(ang) * (off + 90));
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // 轨道
+  for (let i = 0; i < LANES; i++) {
+    laneFlash[i] *= 0.86;
+    const glow = Math.max(laneFlash[i], keyDown[i] ? 0.5 : 0);
+    if (glow > 0.02) {
+      g.globalAlpha = Math.min(glow * 0.28, 0.35);
+      g.fillStyle = LANE_COLORS[i];
+      g.fillRect(i * LANE_W + 2, 0, LANE_W - 4, H);
+      g.globalAlpha = 1;
+    }
+    g.strokeStyle = "#2a2a4a";
+    g.lineWidth = 2;
+    g.strokeRect(i * LANE_W + 2, 0, LANE_W - 4, H);
+  }
+
+  // 判定线 + 击中发光
+  g.fillStyle = "#5a5aff";
+  g.fillRect(0, JUDGE_Y - 2, W, 4);
+  for (let i = 0; i < LANES; i++) {
+    judgeGlow[i] *= 0.9;
+    if (judgeGlow[i] > 0.02) {
+      const x = i * LANE_W;
+      const grad = g.createLinearGradient(0, JUDGE_Y - 26, 0, JUDGE_Y + 26);
+      grad.addColorStop(0, "transparent");
+      grad.addColorStop(0.5, LANE_COLORS[i]);
+      grad.addColorStop(1, "transparent");
+      g.globalAlpha = judgeGlow[i] * 0.8;
+      g.fillStyle = grad;
+      g.fillRect(x + 2, JUDGE_Y - 26, LANE_W - 4, 52);
+      g.globalAlpha = 1;
+    }
+  }
+
+  // 音符
+  if (playing) {
+    const speed = cfg().speed;
+    for (const n of notes) {
+      if (n.state !== "pending") continue;
+      const y = JUDGE_Y - (n.time - now) * speed;
+      if (y < -30) break;
+      if (y > H + 30) continue;
+      const x = n.lane * LANE_W + 8;
+      g.fillStyle = LANE_COLORS[n.lane];
+      g.beginPath();
+      g.roundRect(x, y - 14, LANE_W - 16, 28, 8);
+      g.fill();
+      g.globalAlpha = 0.35;
+      g.fillStyle = "#fff";
+      g.beginPath();
+      g.roundRect(x + 6, y - 10, LANE_W - 28, 8, 4);
+      g.fill();
+      g.globalAlpha = 1;
+    }
+  }
+
+  // 粒子
+  particles = particles.filter(p => now - p.born < p.life);
+  for (const p of particles) {
+    const age = now - p.born;
+    const x = p.x + p.vx * age;
+    const y = p.y + p.vy * age + 500 * age * age;
+    g.globalAlpha = 1 - age / p.life;
+    g.fillStyle = p.color;
+    g.beginPath();
+    g.arc(x, y, 3, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+
+  // 涟漪
+  ripples = ripples.filter(r => now - r.born < 0.9);
+  for (const r of ripples) {
+    const age = now - r.born;
+    const p = age / 0.9;
+    g.globalAlpha = (1 - p) * 0.6;
+    g.strokeStyle = r.color;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(r.x, r.y, r.maxR * (1 - Math.pow(1 - p, 3)), 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+
+  // 键位提示
+  for (let i = 0; i < LANES; i++) {
+    g.fillStyle = keyDown[i] ? LANE_COLORS[i] : "#666";
+    g.font = "bold 20px sans-serif";
+    g.textAlign = "center";
+    g.fillText(KEYS[i].toUpperCase(), i * LANE_W + LANE_W / 2, H - 25);
+  }
+
+  // 分数 + 实时排名
+  displayScore += (score - displayScore) * 0.18;
+  if (Math.abs(score - displayScore) < 1) displayScore = score;
+  g.textAlign = "left";
+  g.fillStyle = "#fff";
+  g.font = "bold 22px sans-serif";
+  g.fillText("分数 " + Math.round(displayScore), 14, 34);
+  if (playing) {
+    const rank = playerRank();
+    g.font = "bold 15px sans-serif";
+    g.fillStyle = rank === 1 ? "#ffd75a" : rank <= 3 ? "#7af0a0" : "#99a";
+    g.fillText(`排名 #${rank} / ${BOTS.length + 1}`, 14, 58);
+  }
+
+  // 测试模式标识
+  if (playing && autoPlay) {
+    g.textAlign = "right";
+    g.fillStyle = "#ffb84d";
+    g.font = "bold 15px sans-serif";
+    g.fillText("AUTO 测试中", W - 14, 34);
+  }
+
+  // 连击
+  if (combo > 1) {
+    const popAge = comboPopAt < 0 ? 1 : now - comboPopAt;
+    const pop = Math.max(0, 1 - popAge / 0.18);
+    const scale = 1 + 0.5 * pop * pop;
+    let color = "#ffd75a";
+    if (combo >= 100) color = "#ff7ab8";
+    else if (combo >= 50) color = "#ffa75a";
+    g.save();
+    g.translate(W / 2, 110);
+    g.scale(scale, scale);
+    g.textAlign = "center";
+    g.fillStyle = color;
+    g.font = "bold 34px sans-serif";
+    g.shadowColor = color;
+    g.shadowBlur = 18 * pop;
+    g.fillText(combo + " COMBO", 0, 0);
+    g.restore();
+  }
+
+  // 判定弹出文字
+  popups = popups.filter(p => now - p.time < 0.5);
+  for (const p of popups) {
+    const age = now - p.time;
+    const inScale = age < 0.12 ? 1.3 - (age / 0.12) * 0.3 : 1;
+    g.save();
+    g.translate(W / 2, JUDGE_Y - 60 - age * 40);
+    g.scale(inScale, inScale);
+    g.globalAlpha = 1 - Math.pow(age / 0.5, 2);
+    g.fillStyle = p.color;
+    g.font = "bold 26px sans-serif";
+    g.textAlign = "center";
+    g.fillText(p.text, 0, 0);
+    g.restore();
+  }
+  g.globalAlpha = 1;
+
+  // 阶段提示横幅
+  if (phaseBanner) {
+    const age = now - phaseBanner.time;
+    if (age > 3) {
+      phaseBanner = null;
+    } else {
+      const scale = age < 0.25 ? 1.4 - (age / 0.25) * 0.4 : 1;
+      const alpha = age > 2.3 ? 1 - (age - 2.3) / 0.7 : 1;
+      g.save();
+      g.translate(W / 2, H * 0.35);
+      g.scale(scale, scale);
+      g.globalAlpha = alpha;
+      g.textAlign = "center";
+      g.font = "bold 21px 'Microsoft YaHei', sans-serif";
+      g.shadowColor = phaseBanner.color;
+      g.shadowBlur = 24;
+      g.fillStyle = phaseBanner.color;
+      g.fillText(phaseBanner.text, 0, 0, W - 40);
+      g.shadowBlur = 0;
+      g.fillStyle = "#fff";
+      g.globalAlpha = alpha * 0.9;
+      g.fillText(phaseBanner.text, 0, 0, W - 40);
+      g.restore();
+    }
+  }
+
+  // 全屏闪光
+  const flashAge = now - flashAt;
+  if (flashAge >= 0 && flashAge < 0.35) {
+    g.globalAlpha = (1 - flashAge / 0.35) * 0.25;
+    g.fillStyle = flashColor;
+    g.fillRect(0, 0, W, H);
+    g.globalAlpha = 1;
+  }
+}
+
+// ---------- 主循环更新 ----------
+function update() {
+  if (state !== "playing") return;
+  const now = audioCtx.currentTime;
+
+  // 测试模式：自动判定（全部 Perfect）
+  if (autoPlay) {
+    for (const n of notes) {
+      if (n.state === "pending" && now >= n.time) {
+        n.state = "hit";
+        cntPerfect++;
+        score += 150 * cfg().scoreMul;
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+        comboPopAt = now;
+        laneFlash[n.lane] = 1;
+        judgeGlow[n.lane] = 1;
+        spawnParticles(n.lane, true);
+        if (now - lastSfxAt > 0.09) {
+          sfxPerfect();
+          lastSfxAt = now;
+        }
+      }
+    }
+  }
+
+  for (const n of notes) {
+    if (n.state === "pending" && now - n.time > cfg().winMiss) {
+      n.state = "miss";
+      cntMiss++;
+      combo = 0;
+      addPopup("MISS", "#ff5a5a");
+      if (now - lastSfxAt > 0.1) {
+        sfxMiss();
+        lastSfxAt = now;
+      }
+    }
+  }
+  updatePhase(now);
+  updateBots(now);
+  const lastTime = notes.length ? notes[notes.length - 1].time : 0;
+  if (now > lastTime + 1.5 && notes.every(n => n.state !== "pending")) {
+    endGame();
+  }
+}
+setInterval(update, 50);
+
+// ---------- 开始 / 暂停 / 结束 ----------
+function showScreen(id) {
+  for (const s of ["startScreen", "pauseScreen", "resultScreen"]) {
+    document.getElementById(s).classList.toggle("hidden", s !== id);
+  }
+}
+
+function startGame() {
+  if (selectedSongId === "custom" && !customAnalysis) selectedSongId = SONGS[0].id;
+  playerName = (document.getElementById("nameInput").value.trim() || "玩家").slice(0, 12);
+  try { localStorage.setItem("etherus_name", playerName); } catch (e) {}
+  autoPlay = adminUnlocked && document.getElementById("autoTest").checked;
+
+  if (audioCtx) audioCtx.close();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  noiseBuf = null;
+  songStart = audioCtx.currentTime;
+  score = 0; displayScore = 0; combo = 0; maxCombo = 0;
+  cntPerfect = 0; cntGood = 0; cntMiss = 0;
+  popups = [];
+  particles = [];
+  ripples = [];
+  comboPopAt = -1;
+  lastSfxAt = -1;
+  laneFlash = [0, 0, 0, 0];
+  judgeGlow = [0, 0, 0, 0];
+  currentPhase = 0;
+  phaseBanner = null;
+  flashAt = -10;
+  botScores = BOTS.map(() => 0);
+  currentSongGen = null;
+
+  buildChart();
+  if (selectedSongId === "custom" && customBuffer) {
+    const src = audioCtx.createBufferSource();
+    src.buffer = customBuffer;
+    src.connect(audioCtx.destination);
+    src.start(songStart + LEAD_IN);
+  } else if (currentSongGen) {
+    scheduleSong(currentSongGen, songStart + LEAD_IN);
+  }
+  state = "playing";
+  showScreen(null);
+}
+
+function pauseGame() {
+  if (state !== "playing") return;
+  audioCtx.suspend();
+  keyDown = [false, false, false, false];
+  state = "paused";
+  showScreen("pauseScreen");
+}
+
+function resumeGame() {
+  if (state !== "paused") return;
+  audioCtx.resume();
+  state = "playing";
+  showScreen(null);
+}
+
+function quitToMenu() {
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  state = "ready";
+  notes = [];
+  popups = [];
+  particles = [];
+  ripples = [];
+  phaseBanner = null;
+  currentPhase = 0;
+  keyDown = [false, false, false, false];
+  renderSongList();
+  showScreen("startScreen");
+}
+
+function endGame() {
+  state = "result";
+  const c = cfg();
+  const hit = cntPerfect * 150 + cntGood * 50;
+  const acc = totalNotes ? ((hit / (totalNotes * 150)) * 100) : 0;
+  const fullCombo = cntMiss === 0 && totalNotes > 0;
+
+  document.getElementById("congrats").textContent = getCongrats(acc, fullCombo);
+
+  // 排行榜：测试模式成绩不入榜
+  const lbTitle = document.getElementById("lbTitle");
+  if (autoPlay) {
+    lbTitle.textContent = "测试模式成绩不入榜";
+    document.getElementById("rankList").innerHTML = "";
+  } else {
+    const songName = selectedSongId === "custom"
+      ? "自定义音乐"
+      : (SONGS.find(s => s.id === selectedSongId) || SONGS[0]).name;
+    lbTitle.textContent = "排行榜加载中…";
+    document.getElementById("rankList").innerHTML = "";
+    submitScore(acc).then(({ list, meIndex, online }) => {
+      lbTitle.textContent = `${online ? "在线" : "本地"}排行榜 · ${songName} · ${c.name}`;
+      document.getElementById("rankList").innerHTML = list.length
+        ? list.map((e, i) =>
+            `<div class="rankRow${i === meIndex ? " me" : ""}${i < 3 ? " top" + (i + 1) : ""}">` +
+            `<span class="rname"><span class="rno">#${i + 1}</span><span>${e.name}</span></span>` +
+            `<span>${e.score}</span></div>`
+          ).join("")
+        : "";
+    });
+  }
+
+  document.getElementById("resultStats").innerHTML =
+    `难度：<b>${c.name}</b>　最高连击：<b>${maxCombo}</b><br>` +
+    `Perfect：<b>${cntPerfect}</b>　Good：<b>${cntGood}</b>　Miss：<b>${cntMiss}</b><br>` +
+    `准确率：<b>${acc.toFixed(1)}%</b>`;
+  showScreen("resultScreen");
+}
+
+// ---------- 关卡选择 ----------
+function renderSongList() {
+  const list = document.getElementById("songList");
+  const items = SONGS.map(s =>
+    `<button class="songBtn${s.id === selectedSongId ? " selected" : ""}" data-id="${s.id}">` +
+    `${s.name}<small>${s.bpm} BPM · 约90秒</small></button>`
+  );
+  if (customAnalysis) {
+    items.push(
+      `<button class="songBtn${selectedSongId === "custom" ? " selected" : ""}" data-id="custom">` +
+      `自定义音乐<small>${customFileName}</small></button>`
+    );
+  }
+  list.innerHTML = items.join("");
+  list.querySelectorAll(".songBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedSongId = btn.dataset.id;
+      renderSongList();
+      updateFileStatus();
+    });
+  });
+}
+
+// ---------- 难度选择 ----------
+const fileStatus = document.getElementById("fileStatus");
+function updateFileStatus() {
+  if (selectedSongId === "custom" && customAnalysis) {
+    const n = pickOnsetsForDifficulty(customAnalysis).length;
+    fileStatus.textContent = `${customFileName} — ${cfg().name}难度约 ${n} 个音符`;
+  } else if (customAnalysis) {
+    fileStatus.textContent = "已导入自定义音乐，可在关卡列表中选择";
+  } else {
+    fileStatus.textContent = "";
+  }
+}
+
+document.querySelectorAll(".diffBtn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    diffKey = btn.dataset.d;
+    document.querySelectorAll(".diffBtn").forEach(b => b.classList.toggle("selected", b === btn));
+    updateFileStatus();
+  });
+});
+
+// ---------- 文件导入 ----------
+let customFileName = "";
+const fileInput = document.getElementById("fileInput");
+document.getElementById("pickBtn").addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  fileStatus.textContent = "解码中…";
+  try {
+    const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await tmpCtx.decodeAudioData(await file.arrayBuffer());
+    tmpCtx.close();
+    fileStatus.textContent = "分析节拍中…";
+    await new Promise(r => setTimeout(r, 30));
+    customBuffer = buf;
+    customAnalysis = analyzeBuffer(buf);
+    customFileName = file.name;
+    selectedSongId = "custom";
+    renderSongList();
+    updateFileStatus();
+  } catch (err) {
+    customBuffer = null;
+    customAnalysis = null;
+    fileStatus.textContent = "文件解码失败，请换一个音频文件";
+  }
+});
+
+// ---------- 昵称 ----------
+const nameInput = document.getElementById("nameInput");
+try {
+  const saved = localStorage.getItem("etherus_name");
+  if (saved) nameInput.value = saved;
+} catch (e) {}
+
+// ---------- 管理员 ----------
+document.getElementById("adminLink").addEventListener("click", () => {
+  if (adminUnlocked) {
+    document.getElementById("autoRow").classList.toggle("hidden");
+    return;
+  }
+  const pwd = prompt("请输入管理员密码：");
+  if (pwd === null) return;
+  if (pwd === ADMIN_PASSWORD) {
+    adminUnlocked = true;
+    document.getElementById("autoRow").classList.remove("hidden");
+    document.getElementById("adminLink").textContent = "管理员模式（点击展开/收起测试选项）";
+    alert("管理员模式已开启，可以使用测试模式（自动判定）。");
+  } else {
+    alert("密码错误。");
+  }
+});
+
+// ---------- 输入 ----------
+document.addEventListener("keydown", e => {
+  if (e.repeat) return;
+  if (e.target === nameInput) return; // 输入昵称时不触发游戏按键
+  const key = e.key.toLowerCase();
+  if (key === "escape") {
+    if (state === "playing") pauseGame();
+    else if (state === "paused") resumeGame();
+    return;
+  }
+  const lane = KEYS.indexOf(key);
+  if (lane === -1) return;
+  keyDown[lane] = true;
+  judge(lane);
+});
+document.addEventListener("keyup", e => {
+  const lane = KEYS.indexOf(e.key.toLowerCase());
+  if (lane !== -1) keyDown[lane] = false;
+});
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("retryBtn").addEventListener("click", startGame);
+document.getElementById("resumeBtn").addEventListener("click", resumeGame);
+document.getElementById("quitBtn").addEventListener("click", quitToMenu);
+document.getElementById("menuBtn").addEventListener("click", quitToMenu);
+
+renderSongList();
+updateFileStatus();
+draw();
+</script>
+</body>
+</html>
