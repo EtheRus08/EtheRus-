@@ -100,3 +100,13 @@ cargo tauri build
 - 游戏音频依赖浏览器自动播放策略，已用「开始游戏」按钮满足用户手势要求，壳内同样适用
 - localStorage 在 Electron/Tauri 中均可正常使用，本机排行榜无需改动
 - 若配置了 `LEADERBOARD_API`，桌面版自动共享同一个在线排行榜
+
+## 局域网试玩（可选）
+
+`server.ps1` 是一个极简局域网服务器（PowerShell 编写，无需安装任何环境）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server.ps1
+```
+
+启动后同一 Wi-Fi 下的设备访问 `http://<本机IP>:8080/` 即可游玩。仅供试玩，不作为正式部署方案。
