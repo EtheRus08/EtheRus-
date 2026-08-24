@@ -3879,49 +3879,51 @@ function resultBgmIn() {
 }
 function resultBgmOut() { if (!resultBgm.paused) fadeResultBgm(0); }
 
-// ---------- 启动强制预加载：下载全部音频资源后再进游戏，防止背景/游玩音乐卡顿 ----------
+// ---------- 启动预加载：只阻塞开门曲（进主页即听，不等全部），其余资源后台续传 ----------
 // 开门曲/结算音乐转 Blob URL 内存播放（不再边下边播）；官方歌曲字节写入 songRawCache（与 fetchSongBytes 去重）
 // 个别资源失败不阻塞进游戏（保留原有的懒加载兜底）
 async function bootPreload() {
   const bar = document.getElementById("bootBar");
   const status = document.getElementById("bootStatus");
-  const tasks = [
-    { url: MENU_BGM_FILE, apply: ab => { menuBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" })); } },
-    { url: RESULT_BGM_FILE, apply: ab => { resultBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" })); } },
-    ...SONGS.map(def => ({ url: def.file, apply: ab => { songRawCache[def.id] = Promise.resolve(ab); } })),
-  ];
-  const gots = tasks.map(() => 0);
-  const tots = tasks.map(() => 8 * 1024 * 1024); // Content-Length 未知时的粗估，拿到响应头后校正
-  const refresh = () => {
-    const got = gots.reduce((a, b) => a + b, 0), tot = tots.reduce((a, b) => a + b, 0);
-    const pct = Math.min(99, Math.round((got / tot) * 100));
-    bar.style.width = pct + "%";
-    status.textContent = t("boot.loading") + " " + pct + "%";
-  };
-  const one = async (task, i) => {
-    const res = await fetch(task.url);
+  // 带进度的整文件下载
+  const fetchWhole = async (url, onProgress) => {
+    const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const total = +res.headers.get("Content-Length") || 0;
-    if (total) tots[i] = total;
     const reader = res.body.getReader();
     const chunks = [];
+    let got = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
-      gots[i] += value.length;
-      refresh();
+      got += value.length;
+      if (onProgress) onProgress(got, total);
     }
-    const buf = new Uint8Array(gots[i]);
+    const buf = new Uint8Array(got);
     let off = 0;
     for (const c of chunks) { buf.set(c, off); off += c.length; }
-    tots[i] = gots[i]; // 用实际长度校正，保证总和准确
-    task.apply(buf.buffer);
+    return buf.buffer;
   };
-  refresh();
-  await Promise.allSettled(tasks.map(one));
+  // 阻塞项只有开门曲：5MB 级别，进度条只反映它
+  try {
+    const ab = await fetchWhole(MENU_BGM_FILE, (got, total) => {
+      const pct = total ? Math.min(99, Math.round((got / total) * 100)) : 0;
+      bar.style.width = pct + "%";
+      status.textContent = t("boot.loading") + " " + pct + "%";
+    });
+    menuBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" }));
+  } catch (e) { /* 失败则保留原始流媒体 src，边下边播兜底 */ }
   bar.style.width = "100%";
   status.textContent = t("boot.loading") + " 100%";
+  // 后台续传：结算音乐（未在播才换 blob，正在播说明已走兜底流）+ 官方歌曲字节
+  (async () => {
+    try {
+      const ab = await fetchWhole(RESULT_BGM_FILE);
+      if (resultBgm.paused) resultBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" }));
+    } catch (e) {}
+    prefetchOfficialSongs();
+  })();
 }
 
 // 主页开门曲延续的界面（游戏、暂停、结算、谱面编辑器除外）
