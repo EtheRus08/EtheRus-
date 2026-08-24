@@ -2043,15 +2043,71 @@ let trackAnalysis = null;  // 当前游玩的节拍分析
 let trackBPM = 120;
 let chartBase = 0;         // 谱面小节网格起点（首拍偏移，含倒计时）
 
+// ---------- CDN 加速：jsDelivr 免费分发 GitHub 仓库文件（国内远快于 GitHub Pages），失败回退同源 ----------
+const CDN_BASE = "https://cdn.jsdelivr.net/gh/etherus08/EtheRus-@main/";
+
+// 带进度的整文件下载（fetch → ArrayBuffer）
+// 双重看门狗：stallMs 无数据即中止（停滞）；deadlineMs 总时限（防限流涓流挂死），中止后交给 fetchAsset 回退
+async function fetchWhole(url, onProgress, stallMs = 25000, deadlineMs = 90000) {
+  const ctrl = new AbortController();
+  let timer = 0;
+  const poke = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), stallMs); };
+  poke();
+  const deadline = setTimeout(() => ctrl.abort(), deadlineMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const total = +res.headers.get("Content-Length") || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      poke(); // 有数据就续命
+      chunks.push(value);
+      got += value.length;
+      if (onProgress) onProgress(got, total);
+    }
+    const buf = new Uint8Array(got);
+    let off = 0;
+    for (const c of chunks) { buf.set(c, off); off += c.length; }
+    return buf.buffer;
+  } finally {
+    clearTimeout(timer);
+    clearTimeout(deadline);
+  }
+}
+
+// CDN 并发闸口：普通任务最多 2 个并行，防 jsDelivr 限流导致排队请求涓流挂死；
+// 优先级任务（开门曲，启动阻塞项）直接放行不等队
+let cdnActive = 0;
+const cdnWaiters = [];
+const cdnAcquire = async priority => {
+  if (!priority && cdnActive >= 2) await new Promise(r => cdnWaiters.push(r));
+  cdnActive++;
+};
+const cdnRelease = () => { cdnActive--; const next = cdnWaiters.shift(); if (next) next(); };
+
+// 静态资源下载：优先 jsDelivr CDN，任何失败回退同源相对路径（本地服务器/离线自然走回退）
+// opts.priority 跳过闸口排队；opts.deadlineMs 覆盖总时限
+async function fetchAsset(file, onProgress, opts = {}) {
+  await cdnAcquire(opts.priority);
+  try {
+    return await fetchWhole(CDN_BASE + file, onProgress, 25000, opts.deadlineMs || 90000);
+  } catch (e) {
+    return await fetchWhole(file, onProgress);
+  } finally {
+    cdnRelease();
+  }
+}
+
 // 原始字节预取缓存：id -> Promise<ArrayBuffer>（进选歌页后台预取，开局不等网络）
 // 失败从缓存剔除以便重试；字节解码成功后即释放（songCache 持有解码结果）
 const songRawCache = {};
 function fetchSongBytes(def) {
   if (!songRawCache[def.id]) {
-    songRawCache[def.id] = fetch(def.file).then(res => {
-      if (!res.ok) throw new Error(tf("game.audioHttp", { code: res.status }));
-      return res.arrayBuffer();
-    }).catch(e => { delete songRawCache[def.id]; throw e; });
+    songRawCache[def.id] = fetchAsset(def.file).catch(e => { delete songRawCache[def.id]; throw e; });
   }
   return songRawCache[def.id];
 }
@@ -3885,44 +3941,24 @@ function resultBgmOut() { if (!resultBgm.paused) fadeResultBgm(0); }
 async function bootPreload() {
   const bar = document.getElementById("bootBar");
   const status = document.getElementById("bootStatus");
-  // 带进度的整文件下载
-  const fetchWhole = async (url, onProgress) => {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const total = +res.headers.get("Content-Length") || 0;
-    const reader = res.body.getReader();
-    const chunks = [];
-    let got = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      got += value.length;
-      if (onProgress) onProgress(got, total);
-    }
-    const buf = new Uint8Array(got);
-    let off = 0;
-    for (const c of chunks) { buf.set(c, off); off += c.length; }
-    return buf.buffer;
-  };
-  // 阻塞项只有开门曲：5MB 级别，进度条只反映它
+  // 阻塞项只有开门曲：5MB 级别，进度条只反映它；优先级放行 + 较短总时限（CDN 卡住时尽快回退）
   try {
-    const ab = await fetchWhole(MENU_BGM_FILE, (got, total) => {
+    const ab = await fetchAsset(MENU_BGM_FILE, (got, total) => {
       const pct = total ? Math.min(99, Math.round((got / total) * 100)) : 0;
       bar.style.width = pct + "%";
       status.textContent = t("boot.loading") + " " + pct + "%";
-    });
+    }, { priority: true, deadlineMs: 45000 });
     menuBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" }));
   } catch (e) { /* 失败则保留原始流媒体 src，边下边播兜底 */ }
   bar.style.width = "100%";
   status.textContent = t("boot.loading") + " 100%";
-  // 后台续传：结算音乐（未在播才换 blob，正在播说明已走兜底流）+ 官方歌曲字节
+  // 后台续传：官方歌曲字节（优先，与结算音乐并行互不阻塞）+ 结算音乐（未在播才换 blob）
   (async () => {
+    prefetchOfficialSongs();
     try {
-      const ab = await fetchWhole(RESULT_BGM_FILE);
+      const ab = await fetchAsset(RESULT_BGM_FILE);
       if (resultBgm.paused) resultBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" }));
     } catch (e) {}
-    prefetchOfficialSongs();
   })();
 }
 
@@ -4246,9 +4282,9 @@ function extractAlbumArt(ab) {
 // 同时解码音频做节拍分析并缓存（BPM 直接显示在卡片上，首次进歌秒开）
 async function tryLoadCoverFile(id) {
   for (const ext of ["jpg", "png", "webp", "jpeg"]) {
-    try {
-      const r = await fetch(`songs/${id}.${ext}`);
-      if (r.ok) return URL.createObjectURL(await r.blob());
+    try { // 走统一 CDN 通道（看门狗 + 并发闸口），404/失败自动回退同源后抛错换下一扩展名
+      const ab = await fetchAsset(`songs/${id}.${ext}`);
+      return URL.createObjectURL(new Blob([ab]));
     } catch (e) {}
   }
   return null;
@@ -4257,10 +4293,10 @@ async function tryLoadCoverFile(id) {
 function preloadArtwork() {
   for (const s of SONGS) {
     (async () => {
+      // 字节走统一缓存（CDN 优先，与开局/试听/后台预取去重，不重复下载）
       let ab = null;
       try {
-        const r = await fetch(s.file);
-        ab = await r.arrayBuffer();
+        ab = await fetchSongBytes(s);
       } catch (e) { return; }
       // 封面：图片文件优先，其次内嵌
       let url = await tryLoadCoverFile(s.id);
@@ -4276,21 +4312,8 @@ function preloadArtwork() {
         img.src = url;
         JACKET_IMG[s.id] = img;
       }
-      // BPM 与节拍分析（未缓存过才做）
-      if (!songCache[s.id]) {
-        try {
-          const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const buf = await tmpCtx.decodeAudioData(ab);
-          tmpCtx.close();
-          const analysis = analyzeBuffer(buf);
-          const bt = estimateBeatTrack(analysis, s.bpm || estimateBPM(analysis));
-          songCache[s.id] = { buffer: buf, analysis, bpm: Math.round(bt.bpm), beatSec: bt.beatSec, firstOnset: bt.offset };
-          if (!s.bpm) {
-            s.bpm = Math.round(bt.bpm);
-          }
-          renderSongList();
-        } catch (e) {}
-      }
+      // BPM 与节拍分析：复用 ensureSongAudio（缓存/解码/BPM 回填一处逻辑）
+      try { await ensureSongAudio(s); } catch (e) {}
     })();
   }
 }
