@@ -4282,8 +4282,8 @@ function extractAlbumArt(ab) {
 // 同时解码音频做节拍分析并缓存（BPM 直接显示在卡片上，首次进歌秒开）
 async function tryLoadCoverFile(id) {
   for (const ext of ["jpg", "png", "webp", "jpeg"]) {
-    try { // 走统一 CDN 通道（看门狗 + 并发闸口），404/失败自动回退同源后抛错换下一扩展名
-      const ab = await fetchAsset(`songs/${id}.${ext}`);
+    try { // 走统一 CDN 通道（看门狗防挂死）；封面体积小且影响首屏，优先级跳队不排在大文件后面
+      const ab = await fetchAsset(`songs/${id}.${ext}`, undefined, { priority: true });
       return URL.createObjectURL(new Blob([ab]));
     } catch (e) {}
   }
