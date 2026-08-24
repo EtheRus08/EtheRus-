@@ -496,6 +496,7 @@
   .setRow .uiSelect { width: 184px; margin-top: 0; flex-shrink: 0; }
   .setRow .editorBtn { margin-top: 0 !important; padding: 5px 14px !important; font-size: 12px !important; }
   #devDebug { white-space: pre-line; font-family: Consolas, monospace; font-size: 12px; }
+  #adminStats { white-space: pre-line; }
   /* 福利社：签到日历 + 商店 */
   #rewardScreen { overflow-y: auto; padding-bottom: 40px; }
   #coinShow { font-size: 18px; color: #ffd60a; margin-top: 8px; letter-spacing: 2px; }
@@ -982,6 +983,11 @@
         <p class="section-label" data-i18n="dev.debug">调试信息</p>
         <p id="devDebug" class="devNote">—</p>
       </div>
+      <div class="devCard">
+        <p class="section-label" data-i18n="dev.stats">后台数据</p>
+        <button id="adminStatsBtn" class="editorBtn" data-i18n="dev.statsRefresh">刷新后台数据</button>
+        <p id="adminStats" class="devNote">—</p>
+      </div>
     </div>
     <button id="devBackBtn" data-i18n="common.backHome">返回主页</button>
   </div>
@@ -1311,6 +1317,16 @@ const I18N = {
     "dev.wipeConfirm": "清除本机全部评级和本地排行榜缓存？（账号和头像保留）",
     "dev.dataNote": "导出包含全部 etherus_ 前缀的本机数据；清除只动评级和本地榜，不删账号。",
     "dev.debug": "调试信息",
+    "dev.stats": "后台数据",
+    "dev.statsRefresh": "刷新后台数据",
+    "dev.statsLoading": "加载中…",
+    "dev.statsFail": "获取失败：",
+    "dev.statsSummary": "注册 {users} 人 · 登录 {logins} 次 · 游玩 {plays} 次",
+    "dev.statsSongs": "分歌曲游玩：",
+    "dev.statsSongLine": "{key}：{n} 次",
+    "dev.statsAccounts": "账号列表：",
+    "dev.statsAccLine": "{name} Lv.{level}（{xp} XP）游玩 {plays} 次 · 最近 {lastSeen}",
+    "dev.statsNone": "暂无数据",
     "dev.judgeNone": "近 20 次判定：暂无数据",
     "dev.judgeLine": "近 {n} 次判定：均值 {mean} ms，离散 ±{sd} ms",
     "dev.debugLine": "FPS：{fps}　状态：{state}\n输出设备：{sink}　基础延迟：{latency}\n判定偏移：{offset} ms\n{judge}",
@@ -1540,6 +1556,16 @@ const I18N = {
     "dev.wipeConfirm": "Clear all local grades and leaderboard cache? (Account and avatar kept)",
     "dev.dataNote": "Export includes all local etherus_* data; clearing only removes grades and local scores, not accounts.",
     "dev.debug": "Debug Info",
+    "dev.stats": "Server Stats",
+    "dev.statsRefresh": "Refresh stats",
+    "dev.statsLoading": "Loading…",
+    "dev.statsFail": "Failed: ",
+    "dev.statsSummary": "{users} users · {logins} logins · {plays} plays",
+    "dev.statsSongs": "Plays by song:",
+    "dev.statsSongLine": "{key}: {n}",
+    "dev.statsAccounts": "Accounts:",
+    "dev.statsAccLine": "{name} Lv.{level} ({xp} XP) {plays} plays · last {lastSeen}",
+    "dev.statsNone": "No data yet",
     "dev.judgeNone": "Last 20 judgements: no data",
     "dev.judgeLine": "Last {n} judgements: mean {mean} ms, spread ±{sd} ms",
     "dev.debugLine": "FPS: {fps}　State: {state}\nOutput: {sink}　Base latency: {latency}\nOffset: {offset} ms\n{judge}",
@@ -3130,7 +3156,7 @@ function saveBestGrade(id, diff, grade) {
 // ---------- 排行榜存储层 ----------
 // 配置 LEADERBOARD_API 即为在线排行榜（服务器接口协议见 README.md）；
 // 留空则使用本机 localStorage。在线提交失败时自动回退本机。
-const LEADERBOARD_API = "https://puts-funeral-recipients-forum.trycloudflare.com";
+const LEADERBOARD_API = "https://interest-paul-heritage-tribes.trycloudflare.com";
 const LB_SECRET = "EtheRusLB#2024!k7Qx"; // 与 leaderboard.ps1 的 $SECRET 一致（只能提高门槛，无法根除改内存刷分）
 
 function lbKey() { return `etherus_lb_${selectedSongId}_${diffKey}`; }
@@ -5343,6 +5369,37 @@ document.getElementById("devWipeBtn").addEventListener("click", () => {
   renderSongList();
   renderDiffs();
 });
+
+// 后台数据：服务器注册人数/登录次数/游玩次数/账号列表（服务端密码哈希 + IP 白名单双重门槛）
+document.getElementById("adminStatsBtn").addEventListener("click", fetchAdminStats);
+async function fetchAdminStats() {
+  const el = document.getElementById("adminStats");
+  el.textContent = t("dev.statsLoading");
+  try {
+    const res = await fetch(LEADERBOARD_API + "/admin/stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pwdHash: DEV_PWD_HASH }),
+    });
+    const data = await res.json();
+    if (!data.ok) { el.textContent = t("dev.statsFail") + (data.error || res.status); return; }
+    const lines = [tf("dev.statsSummary", { users: data.users, logins: data.logins, plays: data.plays })];
+    const songKeys = Object.keys(data.songs || {});
+    if (songKeys.length) {
+      lines.push(t("dev.statsSongs"));
+      for (const k of songKeys) lines.push("　" + tf("dev.statsSongLine", { key: k, n: data.songs[k] }));
+    }
+    const accs = [].concat(data.accounts || []);
+    if (accs.length) {
+      lines.push(t("dev.statsAccounts"));
+      for (const a of accs) lines.push("　" + tf("dev.statsAccLine", { name: a.name, level: a.level, xp: a.xp, plays: a.plays, lastSeen: a.lastSeen || "-" }));
+    }
+    if (!songKeys.length && !accs.length) lines.push(t("dev.statsNone"));
+    el.textContent = lines.join("\n");
+  } catch (e) {
+    el.textContent = t("dev.statsFail") + e.message;
+  }
+}
 
 // 调试信息数据源：FPS + 判定偏差记录
 let devFrames = 0, devFps = 0, devFpsAt = 0, devDebugAt = 0;
