@@ -401,6 +401,10 @@
   }
   #adminLink:hover { color: var(--dim); }
   #verTag { position: absolute; right: 24px; bottom: 20px; font-size: 11px; color: var(--dimmer); letter-spacing: 1px; }
+  /* 启动强制预加载：细白线进度条 */
+  #bootBarWrap { width: 280px; height: 3px; border: 1px solid var(--border-soft); border-radius: 2px; margin-top: 30px; overflow: hidden; }
+  #bootBar { height: 100%; width: 0%; background: var(--text); transition: width .25s ease; }
+  #bootStatus { font-size: 12px; color: var(--dim); letter-spacing: 2px; margin-top: 14px !important; }
   /* 联系方式角落（主菜单左下）：常显卡片 + 引导呼吸点，无需点击 */
   #contactCorner { position: absolute; left: 24px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   #contactHint { display: flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: 3px; color: var(--dim); }
@@ -690,7 +694,14 @@
 
 </div>
 
-  <div class="overlay wide" id="startScreen">
+  <div class="overlay wide" id="bootScreen">
+    <h1>EtheRus</h1>
+    <p class="subtitle">RHYTHM · FOUR KEYS</p>
+    <div id="bootBarWrap"><div id="bootBar"></div></div>
+    <p id="bootStatus">…</p>
+  </div>
+
+  <div class="overlay wide hidden" id="startScreen">
     <h1>EtheRus</h1>
     <p class="subtitle">RHYTHM · FOUR KEYS</p>
     <nav id="mainMenu">
@@ -1236,6 +1247,7 @@ const I18N = {
     "file.analyzing": "分析节拍中…",
     "file.decodeFail": "文件解码失败，请换一个音频文件",
     "game.ready": "准备…",
+    "boot.loading": "正在加载音频资源",
     "game.recording": "● 录制中　已录 {n} 键　Esc 结束",
     "game.noLevel": "还没有可玩的关卡：请先导入自定义音乐，或等待官方歌曲上线。",
     "game.officialFail": "官方歌曲加载失败：",
@@ -1463,6 +1475,7 @@ const I18N = {
     "file.analyzing": "Analyzing beats…",
     "file.decodeFail": "Failed to decode — try another audio file",
     "game.ready": "READY…",
+    "boot.loading": "Loading audio",
     "game.recording": "● REC — {n} keys — Esc to finish",
     "game.noLevel": "No level to play yet — import custom music or wait for official songs.",
     "game.officialFail": "Failed to load official song: ",
@@ -2030,14 +2043,34 @@ let trackAnalysis = null;  // 当前游玩的节拍分析
 let trackBPM = 120;
 let chartBase = 0;         // 谱面小节网格起点（首拍偏移，含倒计时）
 
+// 原始字节预取缓存：id -> Promise<ArrayBuffer>（进选歌页后台预取，开局不等网络）
+// 失败从缓存剔除以便重试；字节解码成功后即释放（songCache 持有解码结果）
+const songRawCache = {};
+function fetchSongBytes(def) {
+  if (!songRawCache[def.id]) {
+    songRawCache[def.id] = fetch(def.file).then(res => {
+      if (!res.ok) throw new Error(tf("game.audioHttp", { code: res.status }));
+      return res.arrayBuffer();
+    }).catch(e => { delete songRawCache[def.id]; throw e; });
+  }
+  return songRawCache[def.id];
+}
+
+// 后台预取全部官方歌曲的字节（只下载不解码，避免主线程 DSP 卡顿；错误静默忽略）
+function prefetchOfficialSongs() {
+  for (const def of SONGS) {
+    if (!songCache[def.id]) fetchSongBytes(def).catch(() => {});
+  }
+}
+
 // 加载官方歌曲音频并做节拍分析（首次加载后缓存）
 async function ensureSongAudio(def) {
   if (songCache[def.id]) return songCache[def.id];
-  const res = await fetch(def.file);
-  if (!res.ok) throw new Error(tf("game.audioHttp", { code: res.status }));
-  const ab = await res.arrayBuffer();
+  const ab = await fetchSongBytes(def);
   const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const buf = await tmpCtx.decodeAudioData(ab);
+  // decodeAudioData 会 detach 传入的 ArrayBuffer，传副本以防并发解码拿到空缓冲
+  const buf = await tmpCtx.decodeAudioData(ab.slice(0));
+  delete songRawCache[def.id]; // 解码完成，释放原始字节（songCache 持有解码结果）
   tmpCtx.close();
   const analysis = analyzeBuffer(buf);
   const bt = estimateBeatTrack(analysis, def.bpm || estimateBPM(analysis));
@@ -3688,7 +3721,8 @@ setInterval(update, 50);
 // 主页开门曲：循环播放，进主页淡入、离开淡出
 const MENU_BGM_VOL = 0.3;
 // 文件名含空格和 #，必须 URL 编码
-const menuBgm = new Audio("songs/Artificial%20Existence-Jun%20Kuroda%232DCNl7.mp3");
+const MENU_BGM_FILE = "songs/Artificial%20Existence-Jun%20Kuroda%232DCNl7.mp3";
+const menuBgm = new Audio(MENU_BGM_FILE);
 menuBgm.loop = true;
 menuBgm.volume = 0;
 let menuBgmWanted = false;
@@ -3821,7 +3855,8 @@ function menuBgmOut() {
 
 // ---------- 结算音乐：弹出评级后循环播放，离开结算页淡出停止 ----------
 const RESULT_BGM_VOL = 0.4; // 结算音乐音量（参考：开门曲 0.3、试听 0.5）
-const resultBgm = new Audio("songs/M800002mFph51yly1X.mp3");
+const RESULT_BGM_FILE = "songs/M800002mFph51yly1X.mp3";
+const resultBgm = new Audio(RESULT_BGM_FILE);
 resultBgm.loop = true;
 resultBgm.volume = 0;
 let resultBgmFadeId = null;
@@ -3844,11 +3879,56 @@ function resultBgmIn() {
 }
 function resultBgmOut() { if (!resultBgm.paused) fadeResultBgm(0); }
 
+// ---------- 启动强制预加载：下载全部音频资源后再进游戏，防止背景/游玩音乐卡顿 ----------
+// 开门曲/结算音乐转 Blob URL 内存播放（不再边下边播）；官方歌曲字节写入 songRawCache（与 fetchSongBytes 去重）
+// 个别资源失败不阻塞进游戏（保留原有的懒加载兜底）
+async function bootPreload() {
+  const bar = document.getElementById("bootBar");
+  const status = document.getElementById("bootStatus");
+  const tasks = [
+    { url: MENU_BGM_FILE, apply: ab => { menuBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" })); } },
+    { url: RESULT_BGM_FILE, apply: ab => { resultBgm.src = URL.createObjectURL(new Blob([ab], { type: "audio/mpeg" })); } },
+    ...SONGS.map(def => ({ url: def.file, apply: ab => { songRawCache[def.id] = Promise.resolve(ab); } })),
+  ];
+  const gots = tasks.map(() => 0);
+  const tots = tasks.map(() => 8 * 1024 * 1024); // Content-Length 未知时的粗估，拿到响应头后校正
+  const refresh = () => {
+    const got = gots.reduce((a, b) => a + b, 0), tot = tots.reduce((a, b) => a + b, 0);
+    const pct = Math.min(99, Math.round((got / tot) * 100));
+    bar.style.width = pct + "%";
+    status.textContent = t("boot.loading") + " " + pct + "%";
+  };
+  const one = async (task, i) => {
+    const res = await fetch(task.url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const total = +res.headers.get("Content-Length") || 0;
+    if (total) tots[i] = total;
+    const reader = res.body.getReader();
+    const chunks = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      gots[i] += value.length;
+      refresh();
+    }
+    const buf = new Uint8Array(gots[i]);
+    let off = 0;
+    for (const c of chunks) { buf.set(c, off); off += c.length; }
+    tots[i] = gots[i]; // 用实际长度校正，保证总和准确
+    task.apply(buf.buffer);
+  };
+  refresh();
+  await Promise.allSettled(tasks.map(one));
+  bar.style.width = "100%";
+  status.textContent = t("boot.loading") + " 100%";
+}
+
 // 主页开门曲延续的界面（游戏、暂停、结算、谱面编辑器除外）
 const MENU_BGM_SCREENS = new Set(["startScreen", "playScreen", "loginScreen", "profileScreen", "settingsScreen", "guideScreen", "boardScreen", "guestModal", "logoutModal", "devScreen", "rewardScreen"]);
 
 function showScreen(id) {
-  for (const s of ["startScreen", "playScreen", "pauseScreen", "resultScreen", "editorScreen", "guideScreen", "settingsScreen", "boardScreen", "loginScreen", "profileScreen", "guestModal", "logoutModal", "devScreen", "rewardScreen"]) {
+  for (const s of ["bootScreen", "startScreen", "playScreen", "pauseScreen", "resultScreen", "editorScreen", "guideScreen", "settingsScreen", "boardScreen", "loginScreen", "profileScreen", "guestModal", "logoutModal", "devScreen", "rewardScreen"]) {
     document.getElementById(s).classList.toggle("hidden", s !== id);
   }
   // 菜单界面隐藏游戏画布（否则透出 440px 的框和色差）；游戏/暂停/结算/编辑器保留
@@ -3859,6 +3939,7 @@ function showScreen(id) {
   if (id === "playScreen") {
     requestAnimationFrame(centerSelectedSong); // 进入选歌页时选中卡居中
     schedulePreview(selectedSongId);           // 进入选歌页开始试听
+    prefetchOfficialSongs();                   // 后台预取全部官方歌曲字节，开局/切歌不等网络
   } else {
     stopPreview(); // 离开选歌页停止试听（开门曲由上面的 menuBgm 逻辑接管）
   }
@@ -5336,12 +5417,16 @@ drawBgFx();
 drawViz();
 drawParallax();
 
-// 首次启动：先弹玩法引导（新玩家不可跳过）；否则按账号状态进主页或登录页
-if (!isGuided()) {
-  showGuide();
-} else {
-  enterApp();
-}
+// 启动强制预加载：全部音频资源下载完再进游戏（之后：新玩家先弹玩法引导，否则按账号状态进主页/登录页）
+(async () => {
+  showScreen("bootScreen");
+  await bootPreload();
+  if (!isGuided()) {
+    showGuide();
+  } else {
+    enterApp();
+  }
+})();
 </script>
 </body>
 </html>
