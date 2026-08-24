@@ -405,6 +405,7 @@
   #bootBarWrap { width: 280px; height: 3px; border: 1px solid var(--border-soft); border-radius: 2px; margin-top: 30px; overflow: hidden; }
   #bootBar { height: 100%; width: 0%; background: var(--text); transition: width .25s ease; }
   #bootStatus { font-size: 12px; color: var(--dim); letter-spacing: 2px; margin-top: 14px !important; }
+  #bootHint { font-size: 11px; color: var(--dimmer); letter-spacing: 3px; margin-top: 8px !important; }
   /* 联系方式角落（主菜单左下）：常显卡片 + 引导呼吸点，无需点击 */
   #contactCorner { position: absolute; left: 24px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   #contactHint { display: flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: 3px; color: var(--dim); }
@@ -699,6 +700,7 @@
     <p class="subtitle">RHYTHM · FOUR KEYS</p>
     <div id="bootBarWrap"><div id="bootBar"></div></div>
     <p id="bootStatus">…</p>
+    <p id="bootHint" data-i18n="boot.hint">很快就会准备好，请耐心等待</p>
   </div>
 
   <div class="overlay wide hidden" id="startScreen">
@@ -1248,6 +1250,7 @@ const I18N = {
     "file.decodeFail": "文件解码失败，请换一个音频文件",
     "game.ready": "准备…",
     "boot.loading": "正在加载音频资源",
+    "boot.hint": "很快就会准备好，请耐心等待",
     "game.recording": "● 录制中　已录 {n} 键　Esc 结束",
     "game.noLevel": "还没有可玩的关卡：请先导入自定义音乐，或等待官方歌曲上线。",
     "game.officialFail": "官方歌曲加载失败：",
@@ -1476,6 +1479,7 @@ const I18N = {
     "file.decodeFail": "Failed to decode — try another audio file",
     "game.ready": "READY…",
     "boot.loading": "Loading audio",
+    "boot.hint": "Almost ready — thanks for your patience",
     "game.recording": "● REC — {n} keys — Esc to finish",
     "game.noLevel": "No level to play yet — import custom music or wait for official songs.",
     "game.officialFail": "Failed to load official song: ",
